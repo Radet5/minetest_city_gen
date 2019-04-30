@@ -110,6 +110,7 @@ end
 local filename = "mods/minetest_city_gen/generated_towns/large_city1/streetData.json"
 local f = assert(io.open(filename, "r"))
 local t = f:read("*all")
+local path_table = json:decode(t)
 f:close()
 local building_table = json:decode(t)
 local filename = "mods/minetest_city_gen/generated_towns/large_city1/no_farm_buildingData.json"
@@ -124,7 +125,7 @@ local t = f:read("*all")
 f:close()
 local wall_table = json:decode(t)
 
-Structure = {s_type="structure", low_z = math.huge, high_z = -math.huge, low_x = math.huge, high_x = -math.huge, size_y=5}
+Structure = {s_type="structure", low_z = math.huge, high_z = -math.huge, low_x = math.huge, high_x = -math.huge, size_y=9}
 
 function Structure:new (o)
 	o = o or {}
@@ -187,6 +188,7 @@ function Structure:get_verticies_count()
 end
 
 function Structure:plot(z, y, x, node_type)
+	if self.defined_nodes == nil then self.defined_nodes = {} end
 	if self.defined_nodes[z] then
 		if self.defined_nodes[z][y] then
 			if self.defined_nodes[z][y][x] then
@@ -219,6 +221,16 @@ function Structure:plotLineLow(x0, y0, x1, y1, level, node_type)
 
 	for x = x0,x1 do
 		self:plot(y, level, x, node_type)
+		if self.s_type == "streets" or self.s_type == "Wall" then
+			self:plot(y-1, level, x-1, node_type)
+			self:plot(y, level, x-1, node_type)
+			self:plot(y+1, level, x-1, node_type)
+			self:plot(y+1, level, x, node_type)
+			self:plot(y+1, level, x+1, node_type)
+			self:plot(y, level, x+1, node_type)
+			self:plot(y-1, level, x+1, node_type)
+			self:plot(y-1, level, x, node_type)
+		end
 		if D > 0 then
 			y = y + yi
 			D = D -2*dx
@@ -264,8 +276,8 @@ function Structure:plotLine(org_y, nxt_y, org_x, nxt_x, level, node_type)
 	end
 end
 
-function Structure:buildPerimeter(node_type)
-	for y =0,self:get_size_y() do
+function Structure:buildPerimeter(bottom, top, node_type)
+	for y =bottom,top do
 		for i = 1,self:get_verticies_count() do
 			--print(inspect(self:get_x(i)))
 			local nxt_x = self:get_x(1)
@@ -274,6 +286,17 @@ function Structure:buildPerimeter(node_type)
 				nxt_x = self:get_x(i+1)
 				nxt_z = self:get_z(i+1)
 			end
+			self:plotLine(self:get_z(i), nxt_z, self:get_x(i), nxt_x, y, node_type)
+		end
+	end
+end
+
+function Structure:buildPath(bottom, top, node_type)
+	for y =bottom,top do
+		for i = 1,self:get_verticies_count()-1 do
+			--print(inspect(self:get_x(i)))
+			nxt_x = self:get_x(i+1)
+			nxt_z = self:get_z(i+1)
 			self:plotLine(self:get_z(i), nxt_z, self:get_x(i), nxt_x, y, node_type)
 		end
 	end
@@ -303,7 +326,7 @@ end
 
 
 
-function Structure:buildAddDoors()
+function Structure:buildAddDoors(door_type)
 	local filename = "errr.txt"
 	for i = 1,self:get_verticies_count() do
 		local nxt_x = self:get_x(1)
@@ -335,24 +358,65 @@ function Structure:buildAddDoors()
 							--print(j.."Don't worry champ we got it")
 							break
 						end
-					else
 						--print (j.." FFUUUUUUCCCKKKK not even HERE ("..mid_z..","..mid_x..")")
 					end
 					mid_z,mid_x = try(mid_z,mid_x)
 				else break end
 			else break end
 		end
-		self:plot(mid_z, 1, mid_x, "doors:door_wood_a")
-		self:plot(mid_z, 2, mid_x, "doors:hidden")
+		if door_type then
+			self:plot(mid_z, 1, mid_x, door_type)
+			self:plot(mid_z, 2, mid_x, "doors:hidden")
+		else
+			self:plot(mid_z, 1, mid_x, "air")
+			self:plot(mid_z, 2, mid_x, "air")
+		end
 	end
 end
 
 function Structure:build ()
-	self:buildPerimeter("default:wood")
-	if self.s_type ~= "Wall" then
-		self:buildFillPlatform(0, "default:stone")
-		self:buildFillPlatform(self:get_size_y(), "default:wood")
+	if self.s_type == "streets" then
+		self:buildPath(0, 0, "artdeco:stonewall")
+  	elseif self.s_type == "Slum" then
+		self.size_y = 4
+		self:buildPerimeter(0,4,"cottages:loam")
+		self:buildFillPlatform(4, "cottages:roof_flat_reet")
 		self:buildAddDoors()
+  	elseif self.s_type == "Temple" then
+		self.size_y = 30
+		self:buildPerimeter(0,30, "castle_masonry:dungeon_stone")
+		self:buildFillPlatform(0, "castle_masonry:dungeon_stone")
+		self:buildFillPlatform(30, "castle_masonry:dungeon_stone")
+  	elseif self.s_type == "Market" then
+		self.size_y = 5
+		self:buildPerimeter(0,5,"default:wood")
+		self:buildFillPlatform(5,"default:wood")
+		self:buildAddDoors("doors:door_wood_a")
+  	elseif self.s_type == "Merchant" then
+		self.size_y = 14
+		self:buildPerimeter(0, 5, "moreblocks:iron_stone_bricks")
+		self:buildPerimeter(5, 10, "cottages:loam")
+		self:buildPerimeter(10, self:get_size_y(), "cottages:loam")
+		self:buildFillPlatform(0, "default:stone")
+		self:buildFillPlatform(5, "default:tree")
+		self:buildFillPlatform(10, "default:tree")
+		self:buildFillPlatform(self:get_size_y(), "cottages:roof_flat_slate")
+		self:buildAddDoors("doors:door_wood_a")
+  	elseif self.s_type == "air" then
+--		self:buildPerimeter(0, self:get_size_y(), "air")
+--		for i = 0,self:get_size_y() do
+--			self:buildFillPlatform(i, "air")
+--		end
+	elseif self.s_type ~= "Wall" then
+		self:buildPerimeter(0, 5, "default:wood")
+		self:buildPerimeter(5, self:get_size_y(), "cottages:loam")
+		self:buildFillPlatform(0, "default:stone")
+		self:buildFillPlatform(4, "default:tree")
+		self:buildFillPlatform(self:get_size_y(), "default:wood")
+		self:buildAddDoors("doors:door_wood_a")
+	else
+		self:buildPerimeter(0, self:get_size_y(), "default:cobble")
+		self:buildFillPlatform(0, "default:dirt")
 	end
 end
 
@@ -365,11 +429,12 @@ function Structure:get_schematic ()
 		for y =0,self:get_size_y() do
 			for x =0,self:get_size_x() do
 				local name = ""
+				local prob = "254"
 				if pcall(function() name = self.defined_nodes[z][y][x].node end) == false then 
 					name = "air"
-					if y == 0 then name = "default:dirt" end
+					if self.s_type ~= "Wall" then prob = "0" end
 				end
-				table.insert(schematic.data, {name = name, prob="254", param2="0"})
+				table.insert(schematic.data, {name = name, prob=prob, param2="0"})
 			end
 		end
 	end
@@ -389,6 +454,7 @@ end
 --end
 
 structures = {}
+paths = {}
 
 local defined_nodes = {}
 local g_low_z = math.huge
@@ -404,6 +470,16 @@ local high_y = -math.huge
 local low_x = math.huge
 local high_x = -math.huge
 
+
+for path_type,paths_data in pairs(path_table) do
+	for _,points in pairs(paths_data) do
+		path = Structure:new({s_type=path_type})
+		for i,point in pairs(points) do 
+			path:insert_point(point.x, point.y)
+		end
+		table.insert(paths,path)
+	end
+end
 
 for k,v in pairs(building_table) do
 	for ward,points in pairs(v) do
@@ -429,7 +505,7 @@ local z = 0
 local y = 0
 local x = 0
 wall = Structure:new({s_type="Wall"})
-wall.size_y = 9
+wall.size_y = 15
 for i,point in pairs(wall_table) do
 	wall:insert_point(point.x, point.y)
 	z = math.floor(point.y*scale)
@@ -441,46 +517,124 @@ for i,point in pairs(wall_table) do
 	if y > high_y then high_y = y end
 	if y < low_y then low_y = y end
 end
-for i,structure in pairs(structures) do
-	--print(inspect(structure))
-	local draw = {}
-	for z = 0,structure:get_size_z() do
-		draw[z] = {}
-		for x = 0,structure:get_size_x() do
-			draw[z][x] = "-"
-		end
-	end
-	for i,v in pairs(structure.verticies) do
-		--print("("..v.x..","..v.z..") = ("..structure:get_x(i)..","..structure:get_z(i)..")")
-		draw[structure:get_z(i)][structure:get_x(i)] = "X"
-	end
-	for z = 0,structure:get_size_z() do
-		for x = 0,structure:get_size_x() do
-			--io.stderr:write(draw[z][x])
-		end
-		--io.stderr:write("\n")
-	end
-end
+--air = {}
+--air["1"] = Structure:new({s_type="air"})
+--air["2"] = Structure:new({s_type="air"})
+--air["3"] = Structure:new({s_type="air"})
+--air["4"] = Structure:new({s_type="air"})
+--
+--air["1"].size_y = 9
+--air["2"].size_y = 9
+--air["3"].size_y = 9
+--air["4"].size_y = 9
+--
+--air["1"]:insert_point(low_x, low_z)
+--air["1"]:insert_point(math.floor(high_x/2), low_z)
+--air["1"]:insert_point(math.floor(high_x/2), math.floor(high_z/2))
+--air["1"]:insert_point(math.floor(high_x/2), math.floor(high_z/2))
+--
+--air["2"]:insert_point(math.ceil(high_x/2), math.floor(low_z))
+--air["2"]:insert_point(high_x, low_z)
+--air["2"]:insert_point(high_x, math.floor(high_z/2))
+--air["2"]:insert_point(math.ceil(high_x/2), math.floor(high_z/2))
+--
+--air["3"]:insert_point(math.ceil(high_x/2), math.ceil(high_z/2))
+--air["3"]:insert_point(high_x, math.ceil(high_z/2))
+--air["3"]:insert_point(high_x, high_z)
+--air["3"]:insert_point(math.ceil(high_x/2), high_z)
+--
+--air["4"]:insert_point(math.floor(high_x/2), high_z)
+--air["4"]:insert_point(low_x, high_z)
+--air["4"]:insert_point(low_x, math.ceil(high_z/2))
+--air["4"]:insert_point(math.floor(high_x/2), math.ceil(high_z/2))
+--
+--param = "1"
+--air[param]:build()
+--air_schem_id[param] = minetest.register_schematic(air[param]:get_schematic())
+--air[param].defined_nodes = nil
+--param = "2"
+--air[param]:build()
+--air_schem_id[param] = minetest.register_schematic(air[param]:get_schematic())
+--air[param].defined_nodes = nil
+--param = "3"
+--air[param]:build()
+--air_schem_id[param] = minetest.register_schematic(air[param]:get_schematic())
+--air[param].defined_nodes = nil
+--param = "4"
+--air[param]:build()
+--air_schem_id[param] = minetest.register_schematic(air[param]:get_schematic())
+--air[param].defined_nodes = nil
+--for i,structure in pairs(structures) do
+--	--print(inspect(structure))
+--	local draw = {}
+--	for z = 0,structure:get_size_z() do
+--		draw[z] = {}
+--		for x = 0,structure:get_size_x() do
+--			draw[z][x] = "-"
+--		end
+--	end
+--	for i,v in pairs(structure.verticies) do
+--		--print("("..v.x..","..v.z..") = ("..structure:get_x(i)..","..structure:get_z(i)..")")
+--		draw[structure:get_z(i)][structure:get_x(i)] = "X"
+--	end
+--	for z = 0,structure:get_size_z() do
+--		for x = 0,structure:get_size_x() do
+--			--io.stderr:write(draw[z][x])
+--		end
+--		--io.stderr:write("\n")
+--	end
+--end
 
 local place_x = -620
 local place_y = 0
 local place_z = 590
-local schem_count = 700
+local schem_count = #structures
 print("Building Count: "..#structures)
---wall:build()
---shhh = minetest.register_schematic(wall:get_schematic())
 local schematic_ids = {}
 for i = 1,schem_count do
 	structures[i]:build()
-	table.insert(schematic_ids, dump(minetest.register_schematic(structures[i]:get_schematic())))
+	structures[i].schem_id = minetest.register_schematic(structures[i]:get_schematic())
+	structures[i].defined_nodes = nil
 end
+collectgarbage()
 minetest.register_chatcommand("place", {func = function (name, param) 
-	--minetest.place_schematic({x=place_x,y=place_y,z=place_z}, shhh, 0, {}, true)
 	for i =1,schem_count do
 		local schem_x = place_x + structures[i]:get_global_x(low_x)
 		local schem_y = place_y
 		local schem_z = place_z + structures[i]:get_global_z(low_z)
-		print(dump(minetest.place_schematic({x=schem_x,y=schem_y,z=schem_z}, schematic_ids[i], 0, {}, false)))
+		print(dump(minetest.place_schematic({x=schem_x,y=schem_y,z=schem_z}, structures[i].schem_id, 0, {}, true)))
+	end
+	return true
+end})
+--minetest.register_chatcommand("clear", {func = function (name, param) 
+--	minetest.place_schematic({x=place_x,y=place_y,z=place_z}, air_schem_id[param], 0, {}, true)
+--	return true
+--end})
+minetest.register_chatcommand("wall", {func = function (name, param) 
+	if wall.defined_nodes ~= nil then
+		print("make a wall")
+		wall:build()
+		wall.schem_id = minetest.register_schematic(wall:get_schematic())
+		wall.defined_nodes = nil
+		collectgarbage()
+	end
+	minetest.place_schematic({x=place_x,y=place_y,z=place_z}, wall.schem_id, 0, {}, true)
+	return true
+end})
+minetest.register_chatcommand("streets", {func = function (name, param) 
+	local street_ids = {}
+	for i,path in pairs(paths) do
+		if path.s_type == "streets" then
+			if path.defined_nodes ~= nil then
+				path:build()
+				path.schem_id = minetest.register_schematic(path:get_schematic())
+				path.defined_nodes = nil
+			end
+			local schem_x = place_x + path:get_global_x(low_x)
+			local schem_y = place_y
+			local schem_z = place_z + path:get_global_z(low_z)
+			print(dump(minetest.place_schematic({x=schem_x,y=schem_y,z=schem_z}, path.schem_id, 0, {}, true)))
+		end
 	end
 	return true
 end})
